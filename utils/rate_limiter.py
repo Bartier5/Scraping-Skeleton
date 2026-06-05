@@ -82,8 +82,8 @@ class RateLimiter:
             # max_rate = tokens added per second
             # time_period = the window in seconds (1.0 = per second)
             self._limiters[domain] = AsyncLimiter(
-                max_rate=self.rate,
-                time_period=1.0,        # rate is per 1 second
+                max_rate=1,
+                time_period=1.0/ self.rate,        # rate is per 1 second
             )
             log.debug("Created new rate limiter for domain: {}", domain)
 
