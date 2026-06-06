@@ -11,6 +11,9 @@ import asyncio
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import sys
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from utils.logger import log
 from utils.helpers import ensure_dir, timestamp
@@ -119,7 +122,7 @@ async def main():
     # Sequential (HttpFetcher)
     seq_start = time.time()
     with HttpFetcher() as sync_fetcher:
-        sync_results = asyncio.run(sync_fetcher.fetch_many(test_urls))
+        sync_results = await sync_fetcher.fetch_many(test_urls)
     seq_elapsed = time.time() - seq_start
 
     # Concurrent (AsyncFetcher)

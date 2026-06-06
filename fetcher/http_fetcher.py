@@ -59,7 +59,7 @@ class HttpFetcher(BaseFetcher):
             "q=0.9,image/avif,image/webp,*/*;q=0.8"
         ),
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",   # tell server we accept compressed responses
+        "Accept-Encoding": "gzip, deflate",   # tell server we accept compressed responses
         "Connection": "keep-alive",                # reuse TCP connection
         "Upgrade-Insecure-Requests": "1",          # prefer HTTPS over HTTP
     }
