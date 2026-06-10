@@ -58,7 +58,7 @@ def main():
     cleaner = DataCleaner()
     transformer = DataTransformer(
         computed={"price": lambda item: DataCleaner.extract_number(item.get("price_raw", "") or "")},
-        drop_fields=["price_raw"],
+        drop_fields=[],
         add_metadata=True,
     )
     validator = DataValidator(schema=BookSchema, strict=False)

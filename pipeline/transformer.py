@@ -102,21 +102,21 @@ class DataTransformer:
         if self.field_map:
             result = self._apply_field_map(result)
 
-        # Step 2 — remove dropped fields
-        if self.drop_fields:
-            result = {k: v for k, v in result.items() if k not in self.drop_fields}
-
-        # Step 3 — filter to keep_fields whitelist
+       # Step 2 — filter to keep_fields whitelist
         if self.keep_fields:
             result = {k: v for k, v in result.items() if k in self.keep_fields}
 
-        # Step 4 — apply type casts
+        # Step 3 — apply type casts
         if self.type_casts:
             result = self._apply_type_casts(result)
 
-        # Step 5 — add computed fields
+        # Step 4 — add computed fields BEFORE dropping source fields
         if self.computed:
             result = self._apply_computed(result)
+
+        # Step 5 — remove dropped fields AFTER computed has used them
+        if self.drop_fields:
+            result = {k: v for k, v in result.items() if k not in self.drop_fields}
 
         # Step 6 — add scrape metadata
         if self.add_metadata:

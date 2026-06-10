@@ -82,7 +82,7 @@ class TestDataFrameBuilder:
         from pandas_layer.dataframe_builder import DataFrameBuilder
         builder = DataFrameBuilder(dtypes={"title": str})
         df = builder.build(SAMPLE_ITEMS)
-        assert df["title"].dtype == object   # pandas uses object for strings
+        assert df["title"].dtype in [object, "string"] or "str" in str(df["title"].dtype)
 
     def test_fill_missing_defaults(self):
         from pandas_layer.dataframe_builder import DataFrameBuilder

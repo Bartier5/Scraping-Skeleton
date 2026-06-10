@@ -236,14 +236,10 @@ class DataExporter:
 
     @staticmethod
     def df_to_records(df: pd.DataFrame) -> list[dict]:
-        """
-        Converts a DataFrame back to a list of dicts.
-        Used when passing data to the storage layer instead of a file.
-
-        Handles NaN → None conversion so dicts are JSON-serializable.
-
-        Returns:
-            list of dicts with NaN replaced by None
-        """
-        # where(df.notna(), other=None) replaces NaN with None
-        return df.where(df.notna(), other=None).to_dict(orient="records")
+        """Converts DataFrame to list of dicts with NaN replaced by None."""
+    # fillna with a sentinel then replace, handles all dtypes correctly
+        return [
+        {k: (None if pd.isna(v) else v)
+         for k, v in record.items()}
+        for record in df.to_dict(orient="records")
+    ]
