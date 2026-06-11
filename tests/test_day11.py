@@ -351,6 +351,7 @@ class TestPostgresStorageIntegration:
     @pytest.fixture
     def storage(self):
         from storage.postgres_storage import PostgresStorage
+        from config.config import Config
         import os
         dsn = os.environ.get("POSTGRES_URL", Config.POSTGRES_URL)
         return PostgresStorage(

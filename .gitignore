@@ -27,7 +27,8 @@ venv/
 env/
 ENV/
 .env/
-scraper-env/            
+scraper-env/
+pytest.ini            
 
 # ── Testing ─────────────────────────────────────────────
 .pytest_cache/

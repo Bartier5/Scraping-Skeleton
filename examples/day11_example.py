@@ -72,7 +72,7 @@ async def run_mock_demo(items: list[dict]):
 
     async def mock_fetchval(sql, *args):
         """Simulates COUNT(*)."""
-        return len(saved_rows)
+        return min(len(saved_rows), 20)
 
     async def mock_execute(sql, *args):
         if "TRUNCATE" in sql:
