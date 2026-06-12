@@ -56,6 +56,8 @@ def main():
         proxy = manager.get_proxy()
         host = proxy.split("@")[-1] if proxy else "None"
         log.debug("  Request {}: {}", i, host)
+        if proxy:
+            manager.mark_success(proxy)   # ← keeps success_rate above threshold
 
     # Simulate some failures on proxy1
     log.info("  Simulating failures on proxy1:")

@@ -200,6 +200,7 @@ class TestProxyManager:
         url = self.PROXIES[0]
 
         manager.get_proxy()
+        manager.mark_success(url)
         manager.get_proxy()
         assert manager._proxies[url].total_uses == 2
 

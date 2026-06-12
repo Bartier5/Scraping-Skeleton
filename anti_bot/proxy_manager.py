@@ -319,21 +319,16 @@ class ProxyManager:
             ]
         }
 
+   
     def reset_bans(self) -> int:
-        """
-        Clears all bans — all proxies become healthy again.
-        Use at the start of a new scrape job.
-
-        Returns:
-            number of bans cleared
-        """
         cleared = 0
         for record in self._proxies.values():
             if record.is_banned:
                 record.banned_until = 0.0
                 record.failures = 0
+                record.total_uses = 0        # ← reset so success_rate recalculates
+                record.total_successes = 0   # ← fresh start after ban
                 cleared += 1
-
         if cleared:
             log.info("ProxyManager: cleared {} proxy bans", cleared)
         return cleared
