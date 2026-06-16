@@ -1,0 +1,53 @@
+# ── requirements.txt ──────────────────────────────────────────────────────────
+# Install all: pip install -r requirements.txt
+# After installing, pin exact versions: pip freeze > requirements_pinned.txt
+
+# ── Core utilities ────────────────────────────────────────────────────────────
+python-dotenv
+loguru
+tenacity
+aiolimiter
+
+# ── HTTP fetching ─────────────────────────────────────────────────────────────
+requests
+httpx[http2]
+aiohttp
+aiofiles
+aiodns
+brotli
+
+# ── Browser automation ────────────────────────────────────────────────────────
+playwright
+# Run after install: playwright install chromium
+
+# ── Parsing ───────────────────────────────────────────────────────────────────
+beautifulsoup4
+lxml
+parsel
+
+# ── Data pipeline ─────────────────────────────────────────────────────────────
+pydantic
+
+# ── Pandas layer ──────────────────────────────────────────────────────────────
+pandas
+numpy
+openpyxl
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+aiosqlite
+asyncpg
+psycopg2-binary
+sqlalchemy
+
+# ── Anti-bot ──────────────────────────────────────────────────────────────────
+fake-useragent
+curl-cffi
+playwright-stealth
+
+# ── Scheduling ────────────────────────────────────────────────────────────────
+apscheduler
+click
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest
+pytest-asyncio

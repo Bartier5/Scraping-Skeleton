@@ -150,7 +150,7 @@ class BatchFetcher(BaseFetcher):
                     # This allows pipeline integration without waiting
                     # for the whole batch to finish
                     try:
-                        on_result(result)
+                        await on_result(result)
                     except Exception as e:
                         # Callback errors should never kill the batch
                         log.error("BatchFetcher: on_result callback error: {}", str(e))

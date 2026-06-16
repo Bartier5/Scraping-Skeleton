@@ -128,6 +128,7 @@ class ExampleSpider(BaseSpider):
             })
 
         log.debug("ExampleSpider: parsed {} raw items from {}", len(raw_items), url)
+        self._stats["items_scraped"] += len(raw_items)
 
         # ── Step 3: Pipeline ──────────────────────────────────────────────────
         cleaned     = self._cleaner.clean_items(raw_items)
