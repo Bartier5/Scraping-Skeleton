@@ -45,6 +45,11 @@ SPIDER_REGISTRY = {
         "class":  "BatchSpider",
         "description": "Batch URL scraper — multiple pages concurrently",
     },
+    "quotes_js": {
+    "module": "spiders.quotes_js_spider",
+    "class":  "QuotesJsSpider",
+    "description": "JS-rendered quotes — Playwright demo",
+},
 }
 
 

@@ -146,46 +146,52 @@ class BrowserFetcher(BaseFetcher):
         return context
 
     async def async_fetch(self, url: str, **kwargs) -> FetchResult:
-        """
-        Fetch a URL using a real Chromium browser tab.
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
 
-        Flow:
-        1. Rate limit check for this domain
-        2. Acquire semaphore slot (max N tabs at once)
-        3. Open fresh browser context + new page (tab)
-        4. Navigate to URL and wait for page to load
-        5. Capture full rendered HTML (after JavaScript runs)
-        6. Close page and context
-        7. Return FetchResult
+        def run_in_thread():
+            """Runs Playwright in a new thread with its own event loop."""
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(self._playwright_fetch(url, **kwargs))
+            finally:
+                loop.close()
 
-        Args:
-            url:       the URL to fetch
-            **kwargs:  optional overrides:
-                       - wait_until (str): override page load event
-                       - timeout (int):   override timeout in ms
-                       - wait_for (str):  CSS selector to wait for before capturing
-                                          e.g. ".product-list" ensures products loaded
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            result = await loop.run_in_executor(executor, run_in_thread)
+        return result
 
-        Returns:
-            FetchResult with rendered HTML
-        """
-        if not self.validate_url(url):
-            return self.make_error_result(url, ValueError(f"Invalid URL: {url}"))
+    async def _playwright_fetch(self, url: str, **kwargs):
+        """The actual Playwright fetch — runs inside its own event loop thread."""
+        from playwright.async_api import async_playwright
+        from fetcher.base_fetcher import FetchResult
 
-        domain = get_domain(url)
-        wait_until = kwargs.get("wait_until", self._wait_until)
-        timeout = kwargs.get("timeout", self.DEFAULT_TIMEOUT)
-        wait_for_selector = kwargs.get("wait_for", None)
+        try:
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(headless=True)
+                page = await browser.new_page()
 
-        # Rate limit per domain
-        await self._rate_limiter.wait(domain)
+                # Wait for network to be idle — ensures JS has finished rendering
+                await page.goto(url, wait_until="networkidle", timeout=30000)
 
-        # Limit concurrent tabs
-        async with self._semaphore:
-            return await self._do_browser_fetch(
-                url, wait_until, timeout, wait_for_selector
-            )
+                # Optional: wait for a specific element to confirm render
+                try:
+                    await page.wait_for_selector("div.quote", timeout=10000)
+                except Exception:
+                    pass   # continue anyway — maybe there are no quotes
 
+                html = await page.content()
+                status = 200
+                await browser.close()
+
+            log.debug("BrowserFetcher OK: {} ({} chars)", url, len(html))
+            return FetchResult(url=url, status_code=status, html=html)
+
+        except Exception as e:
+            log.error("BrowserFetcher failed for {}: {}", url, str(e))
+            return FetchResult(url=url, status_code=0, html="", error=str(e))
     async def _do_browser_fetch(
         self,
         url: str,
