@@ -145,53 +145,58 @@ class BrowserFetcher(BaseFetcher):
 
         return context
 
-    async def async_fetch(self, url: str, **kwargs) -> FetchResult:
+    async def async_fetch(self, url: str, **kwargs) -> "FetchResult":
         import asyncio
         from concurrent.futures import ThreadPoolExecutor
 
-        def run_in_thread():
-            """Runs Playwright in a new thread with its own event loop."""
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        def _run_sync():
+        # Create a brand new event loop in this thread
+        # ProactorEventLoop supports subprocess on Windows
+            new_loop = asyncio.ProactorEventLoop()
+            asyncio.set_event_loop(new_loop)
             try:
-                return loop.run_until_complete(self._playwright_fetch(url, **kwargs))
+                return new_loop.run_until_complete(self._playwright_fetch(url))
             finally:
-                loop.close()
+                new_loop.close()
 
+    # Run the sync wrapper in a thread so the main loop stays unblocked
         loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            result = await loop.run_in_executor(executor, run_in_thread)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            result = await loop.run_in_executor(pool, _run_sync)
+
         return result
 
-    async def _playwright_fetch(self, url: str, **kwargs):
-        """The actual Playwright fetch — runs inside its own event loop thread."""
+    async def _playwright_fetch(self, url: str) -> "FetchResult":
+        """
+        Actual Playwright fetch — runs inside a ProactorEventLoop thread.
+        """
         from playwright.async_api import async_playwright
-        from fetcher.base_fetcher import FetchResult
 
         try:
             async with async_playwright() as pw:
                 browser = await pw.chromium.launch(headless=True)
-                page = await browser.new_page()
+                context = await browser.new_context()
+                page = await context.new_page()
 
-                # Wait for network to be idle — ensures JS has finished rendering
                 await page.goto(url, wait_until="networkidle", timeout=30000)
 
-                # Optional: wait for a specific element to confirm render
+            # Wait for quotes to appear after JS renders them
                 try:
                     await page.wait_for_selector("div.quote", timeout=10000)
                 except Exception:
-                    pass   # continue anyway — maybe there are no quotes
+                    pass  # page might have no quotes — continue anyway
 
                 html = await page.content()
-                status = 200
                 await browser.close()
 
             log.debug("BrowserFetcher OK: {} ({} chars)", url, len(html))
-            return FetchResult(url=url, status_code=status, html=html)
+            return FetchResult(url=url, status_code=200, html=html)
 
         except Exception as e:
             log.error("BrowserFetcher failed for {}: {}", url, str(e))
             return FetchResult(url=url, status_code=0, html="", error=str(e))
+
+   
     async def _do_browser_fetch(
         self,
         url: str,
