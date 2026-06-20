@@ -50,17 +50,8 @@ class InfiniteScrollSpider(BaseSpider):
     TARGET_URL = "https://quotes.toscrape.com/scroll"
 
     def __init__(self, max_scrolls: int = 20, **kwargs):
-        """
-        Args:
-            max_scrolls: safety limit — stop after this many scrolls
-                         even if more content might exist.
-                         quotes.toscrape.com/scroll has 100 quotes total (10 pages worth)
-                         so 15 scrolls is enough. Set higher for real sites.
-        """
-        from fetcher.browser_fetcher import BrowserFetcher
-        browser_fetcher = BrowserFetcher()
-
-        super().__init__(name="InfiniteScrollSpider", fetcher=browser_fetcher, **kwargs)
+        # Don't inject BrowserFetcher — this spider runs Playwright directly
+        super().__init__(name="InfiniteScrollSpider", **kwargs)
 
         self.max_scrolls = max_scrolls
         self._cleaner = DataCleaner()
@@ -139,36 +130,64 @@ class InfiniteScrollSpider(BaseSpider):
         return saved
 
     async def _playwright_scroll_fetch(self) -> str:
-        """
-        The core scroll loop — runs inside ProactorEventLoop thread.
-
-        Algorithm:
-        - Scroll to bottom
-        - Wait for new quotes to appear (networkidle or element count increase)
-        - Repeat until quote count stops growing or max_scrolls reached
-        - Return the final page HTML
-        """
         from playwright.async_api import async_playwright
 
         html = ""
 
         try:
             async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=True)
-                page = await browser.new_page()
+                browser = await pw.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage"]
+                )
+                context = await browser.new_context(
+                    ignore_https_errors=True,
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    )
+                )
+                page = await context.new_page()
 
-                # Initial page load
-                log.info("InfiniteScrollSpider: loading page...")
-                await page.goto(self.TARGET_URL, wait_until="networkidle", timeout=30000)
+                # Retry goto up to 3 times — ERR_ABORTED can be transient
+                for attempt in range(1, 4):
+                    try:
+                        log.info(
+                            "InfiniteScrollSpider: loading page (attempt {}/3)...",
+                            attempt
+                        )
+                        await page.goto(
+                            self.TARGET_URL,
+                            wait_until="domcontentloaded",
+                            timeout=60000,
+                        )
+                        log.info("InfiniteScrollSpider: page loaded")
+                        break
+                    except Exception as e:
+                        log.warning(
+                            "InfiniteScrollSpider: goto attempt {} failed — {}",
+                            attempt, str(e)
+                        )
+                        if attempt == 3:
+                            raise
+                        await asyncio.sleep(3)
 
-                # Wait for first quotes to render
-                await page.wait_for_selector("div.quote", timeout=10000)
+                # Wait for JS to fire first render
+                await asyncio.sleep(4)
 
+                # Wait for quotes — non-fatal
+                try:
+                    await page.wait_for_selector("div.quote", timeout=30000)
+                    log.info("InfiniteScrollSpider: first quotes visible")
+                except Exception:
+                    log.warning("InfiniteScrollSpider: selector timeout — proceeding anyway")
+
+                # Scroll loop
                 scroll_count = 0
                 previous_count = 0
 
                 while scroll_count < self.max_scrolls:
-                    # Count quotes currently in the DOM
                     current_count = await page.eval_on_selector_all(
                         "div.quote",
                         "elements => elements.length"
@@ -179,45 +198,33 @@ class InfiniteScrollSpider(BaseSpider):
                         scroll_count, self.max_scrolls, current_count
                     )
 
-                    # If count hasn't grown since last scroll — we've hit the end
                     if scroll_count > 0 and current_count == previous_count:
                         log.info(
-                            "InfiniteScrollSpider: no new quotes after scroll — "
+                            "InfiniteScrollSpider: no new quotes — "
                             "reached end at {} quotes", current_count
                         )
                         break
 
                     previous_count = current_count
 
-                    # Scroll to the very bottom of the page
                     await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
 
-                    # Wait for the AJAX request to fire and new content to load
-                    # networkidle waits until no network requests for 500ms
                     try:
-                        await page.wait_for_load_state("networkidle", timeout=5000)
+                        await page.wait_for_load_state("networkidle", timeout=8000)
                     except Exception:
-                        # Timeout is fine — means no new network activity
-                        # The page may have loaded all content already
                         pass
 
-                    # Small extra wait to let DOM update finish
-                    await asyncio.sleep(0.5)
-
+                    await asyncio.sleep(1)
                     scroll_count += 1
 
-                # Final count
                 final_count = await page.eval_on_selector_all(
-                    "div.quote",
-                    "elements => elements.length"
+                    "div.quote", "elements => elements.length"
                 )
                 log.info(
-                    "InfiniteScrollSpider: scroll complete — "
-                    "{} total quotes, {} scrolls performed",
+                    "InfiniteScrollSpider: done — {} quotes, {} scrolls",
                     final_count, scroll_count
                 )
 
-                # Capture the fully populated page HTML
                 html = await page.content()
                 await browser.close()
 
