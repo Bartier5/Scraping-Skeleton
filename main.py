@@ -50,6 +50,11 @@ SPIDER_REGISTRY = {
     "class":  "QuotesJsSpider",
     "description": "JS-rendered quotes — Playwright demo",
 },
+    "infinite_scroll": {
+    "module": "spiders.infinite_scroll_spider",
+    "class":  "InfiniteScrollSpider",
+    "description": "Infinite scroll — quotes.toscrape.com/scroll demo",
+},
 }
 
 
