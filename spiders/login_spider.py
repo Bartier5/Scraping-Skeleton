@@ -70,52 +70,45 @@ class LoginSpider(BaseSpider):
 
         log.debug("LoginSpider: initialized for {}", self.LOGIN_URL)
 
-    async def run(self, urls: list[str] = None, **kwargs) -> dict:
+   async def run(self, urls: list[str] = None, **kwargs) -> dict:
         urls = prepare_urls(urls or self.SCRAPE_URLS)
         self.start_run(urls)
 
-        # Step 1 — Login and get authenticated session
         session = await self._login()
         if not session:
             log.error("LoginSpider: login failed — cannot proceed")
             self.finish_run()
             return self.get_stats()
 
-        # Step 2 — Scrape protected pages using the session
-        async with session:
-            for url in urls:
-                await self._scrape_page(url, session)
+        # No context manager — just call directly
+        for url in urls:
+            await self._scrape_page(url, session)
 
         self.finish_run()
         return self.get_stats()
 
     async def _login(self):
-        """
-        Performs the login and returns an authenticated SessionManager.
-
-        How it works:
-        1. GET the login page to get the CSRF token (if any)
-        2. POST credentials to the login endpoint
-        3. Store the session cookies returned by the server
-        4. All subsequent requests include those cookies automatically
-        """
-        from fetcher.session_manager import SessionManager
+        from fetcher.session_manager import SessionManager, SessionConfig
 
         log.info("LoginSpider: logging in as '{}'...", self.username)
 
-        session = SessionManager(
+        config = SessionConfig(
             login_url=self.LOGIN_URL,
             credentials={
                 "username": self.username,
-                "password": self.password,
+            "password": self.password,
             },
-            success_indicator="Logout",   # text present when logged in
-            failure_indicator="Invalid credentials",
+            success_check="Logout",              # text present when logged in
+            expiry_signals=["/login", "sign-in"], # signals session expired
+            session_ttl=3600,
         )
 
-        success = await session.login()
+        session = SessionManager(session_config=config)
 
-        if success:
+        # Perform the actual login POST
+        result = await session.login()
+
+        if result:
             log.info("LoginSpider: login successful — session active")
             return session
         else:
@@ -123,33 +116,23 @@ class LoginSpider(BaseSpider):
             return None
 
     async def _scrape_page(self, url: str, session) -> int:
-        """
-        Scrapes a single page using the authenticated session.
-        The session automatically attaches cookies to every request.
-        """
         log.info("LoginSpider: scraping (authenticated) {}", url)
 
-        # Use the session's fetch method — includes auth cookies automatically
-        result = await session.fetch(url)
+        # async_fetch is inherited from BaseFetcher — uses the live session cookies
+        result = await session.async_fetch(url)
 
-        if not result or result.failed:
+        if result.failed:
             log.warning("LoginSpider: fetch failed for {}", url)
             return 0
 
-        # Check we're still logged in — session might have expired
-        if "Login" in result.html and "Logout" not in result.html:
-            log.warning("LoginSpider: session expired — re-logging in")
-            await session.login()
-            result = await session.fetch(url)
-
         soup = self.parser.make_soup(result.html)
 
-        # Verify we're logged in by checking for the logout link
+        # Verify we're still logged in
         is_logged_in = bool(soup.select("a[href='/logout']"))
         log.info("LoginSpider: authenticated = {}", is_logged_in)
 
-        texts   = self.parser.get_all_text(soup, "span.text")
-        authors = self.parser.get_all_text(soup, "small.author")
+        texts      = self.parser.get_all_text(soup, "span.text")
+        authors    = self.parser.get_all_text(soup, "small.author")
         tag_groups = []
         for quote_el in soup.select("div.quote"):
             tags = [t.get_text(strip=True) for t in quote_el.select("a.tag")]

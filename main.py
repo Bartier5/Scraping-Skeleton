@@ -55,6 +55,11 @@ SPIDER_REGISTRY = {
     "class":  "InfiniteScrollSpider",
     "description": "Infinite scroll — quotes.toscrape.com/scroll demo",
 },
+    "login": {
+    "module": "spiders.login_spider",
+    "class":  "LoginSpider",
+    "description": "Login wall — session-based auth demo",
+},
 }
 
 
