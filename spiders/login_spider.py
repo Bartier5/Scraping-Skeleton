@@ -70,7 +70,7 @@ class LoginSpider(BaseSpider):
 
         log.debug("LoginSpider: initialized for {}", self.LOGIN_URL)
 
-   async def run(self, urls: list[str] = None, **kwargs) -> dict:
+    async def run(self, urls: list[str] = None, **kwargs) -> dict:
         urls = prepare_urls(urls or self.SCRAPE_URLS)
         self.start_run(urls)
 
@@ -96,17 +96,17 @@ class LoginSpider(BaseSpider):
             login_url=self.LOGIN_URL,
             credentials={
                 "username": self.username,
-            "password": self.password,
+                "password": self.password,
             },
-            success_check="Logout",              # text present when logged in
-            expiry_signals=["/login", "sign-in"], # signals session expired
+            success_check="Logout",
+            expiry_signals=["/login", "sign-in"],
             session_ttl=3600,
         )
 
         session = SessionManager(session_config=config)
 
-        # Perform the actual login POST
-        result = await session.login()
+        # login() is sync not async — no await
+        result = session.login()
 
         if result:
             log.info("LoginSpider: login successful — session active")
@@ -118,7 +118,8 @@ class LoginSpider(BaseSpider):
     async def _scrape_page(self, url: str, session) -> int:
         log.info("LoginSpider: scraping (authenticated) {}", url)
 
-        # async_fetch is inherited from BaseFetcher — uses the live session cookies
+        # Use async_fetch — it wraps the sync fetch in a thread pool
+        # The sync fetch carries the session cookies automatically
         result = await session.async_fetch(url)
 
         if result.failed:
@@ -127,7 +128,7 @@ class LoginSpider(BaseSpider):
 
         soup = self.parser.make_soup(result.html)
 
-        # Verify we're still logged in
+        # Check we're logged in — look for the logout link
         is_logged_in = bool(soup.select("a[href='/logout']"))
         log.info("LoginSpider: authenticated = {}", is_logged_in)
 
@@ -153,7 +154,6 @@ class LoginSpider(BaseSpider):
         ]
 
         self._stats["items_scraped"] += len(raw_items)
-
         cleaned     = self._cleaner.clean_items(raw_items)
         transformed = self._transformer.transform_items(cleaned)
         batch       = self._validator.validate_batch(transformed)
