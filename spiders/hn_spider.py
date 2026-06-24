@@ -1,5 +1,8 @@
 import asyncio
 import sys
+from pipeline.cleaner import DataCleaner
+from pipeline.transformer import DataTransformer
+from utils.logger import log
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -25,6 +28,8 @@ class HNSpider(BaseSpider):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._cleaner = DataCleaner()
+        self._transformer = DataTransformer(add_metadata=True)
         self._validator = DataValidator(schema=HNStorySchema)
 
     async def run(self, urls=None, **kwargs):
@@ -73,7 +78,7 @@ class HNSpider(BaseSpider):
                 await self.save(batch.valid_items)
 
                 self._stats["items_scraped"] += len(batch.valid_items)
-                self.logger.info(f"Page {page}/{total_pages} — {len(batch.valid_items)} stories")
+                log.info(f"Page {page}/{total_pages} — {len(batch.valid_items)} stories")
 
                 page += 1
                 if page >= total_pages or page >= 5:  # cap at 5 pages for test
