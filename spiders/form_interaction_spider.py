@@ -109,6 +109,7 @@ class FormInteractionSpider(BaseSpider):
                         await asyncio.sleep(3)
 
                 # Step 2 — Read all authors from the dropdown
+                await page.wait_for_selector("select#author", timeout=30000)
                 authors = await page.eval_on_selector(
                     "select#author",
                     "el => Array.from(el.options).map(o => o.value).filter(v => v !== '')"
@@ -121,7 +122,8 @@ class FormInteractionSpider(BaseSpider):
 
                     # Select author
                     await page.select_option("select#author", author)
-                    await asyncio.sleep(0.5)
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                    await asyncio.sleep(1)
 
                     # Read available tags for this author
                     tags = await page.eval_on_selector(
