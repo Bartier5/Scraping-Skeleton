@@ -101,6 +101,8 @@ class FormInteractionSpider(BaseSpider):
                             timeout=60000
                         )
                         log.info("FormInteractionSpider: page loaded")
+                        html_debug = await page.content()
+                        log.info("FormInteractionSpider: HTML preview — {}", html_debug[:2000])
                         break
                     except Exception as e:
                         log.warning("FormInteractionSpider: goto attempt {} failed — {}", attempt, str(e))
