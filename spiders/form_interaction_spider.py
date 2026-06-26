@@ -29,6 +29,7 @@ class FormInteractionSpider(BaseSpider):
     """
 
     TARGET_URL = "https://quotes.toscrape.com/filter.aspx"
+    BASE_URL = "https://quotes.toscrape.com"
 
     def __init__(self, **kwargs):
         super().__init__(name="FormInteractionSpider", **kwargs)
@@ -97,9 +98,10 @@ class FormInteractionSpider(BaseSpider):
                     try:
                         await page.goto(
                             self.TARGET_URL,
-                            wait_until="networkidle",
+                            wait_until="domcontentloaded",
                             timeout=60000
                         )
+                        await asyncio.sleep(3)
                         log.info("FormInteractionSpider: page loaded")
                         html_debug = await page.content()
                         log.info("FormInteractionSpider: HTML preview — {}", html_debug[:2000])
@@ -167,7 +169,8 @@ class FormInteractionSpider(BaseSpider):
                     log.info("FormInteractionSpider: {} quotes for author {}", len(quote_els), author)
 
                     # Go back to form for next author
-                    await page.goto(self.TARGET_URL, wait_until="networkidle", timeout=30000)
+                    await page.goto(self.TARGET_URL, wait_until="domcontentloaded", timeout=30000)
+                    await asyncio.sleep(2)
 
                 await browser.close()
 
