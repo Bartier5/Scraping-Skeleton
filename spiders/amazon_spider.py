@@ -11,8 +11,6 @@ from spiders.base_spider import BaseSpider
 from pipeline.cleaner import DataCleaner
 from pipeline.transformer import DataTransformer
 from pipeline.validator import DataValidator
-from anti_bot.fingerprint_manager import TlsFetcher
-from anti_bot.headers_manager import HeadersManager
 from pydantic import BaseModel
 from typing import Optional
 from utils.logger import log
@@ -45,10 +43,7 @@ class AmazonSpider(BaseSpider):
         self._cleaner = DataCleaner()
         self._transformer = DataTransformer(add_metadata=True)
         self._validator = DataValidator(schema=AmazonProductSchema, strict=False)
-        self._tls = TlsFetcher(browser="chrome120")
-        self._headers = HeadersManager(browser="chrome").get_headers(
-            url=self.SEARCH_URL
-        )
+       
 
     async def run(self, urls=None, **kwargs):
         self.start_run([self.SEARCH_URL])
@@ -64,38 +59,34 @@ class AmazonSpider(BaseSpider):
     async def _scrape_page(self, url: str, page_num: int):
         log.info("AmazonSpider: fetching page {} — {}", page_num, url)
 
-        # TlsFetcher is sync — run in executor to avoid blocking event loop
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _run_sync():
+            new_loop = asyncio.ProactorEventLoop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                return new_loop.run_until_complete(self._playwright_fetch(url))
+            finally:
+                new_loop.close()
+
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: self._tls.fetch(url, headers=self._headers)
-        )
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            html = await loop.run_in_executor(pool, _run_sync)
 
-        status = result.get("status_code")
-        html = result.get("html", "")
-        error = result.get("error")
-
-        if error or not html:
-            log.error("AmazonSpider: failed page {} — {}", page_num, error)
+        if not html:
+            log.error("AmazonSpider: no HTML returned for page {}", page_num)
             return
 
-        if status != 200:
-            log.warning("AmazonSpider: status {} on page {}", status, page_num)
-
-        if "Enter the characters you see below" in html or "Robot Check" in html:
-            log.warning("AmazonSpider: CAPTCHA detected on page {}", page_num)
+        if "Robot Check" in html or "Enter the characters" in html:
+            log.warning("AmazonSpider: CAPTCHA on page {}", page_num)
             return
 
-        # Parse HTML
         soup = self.parser.make_soup(html)
-
-        # Amazon product cards
         cards = soup.select("div[data-component-type='s-search-result']")
         log.info("AmazonSpider: found {} product cards on page {}", len(cards), page_num)
 
         if not cards:
-            # Dump first 1000 chars to debug
-            log.warning("AmazonSpider: no cards found — HTML preview: {}", html[:1000])
+            log.warning("AmazonSpider: no cards — HTML preview: {}", html[:1000])
             return
 
         raw = []
@@ -121,3 +112,54 @@ class AmazonSpider(BaseSpider):
 
         self._stats["items_scraped"] += len(batch.valid_items)
         log.info("AmazonSpider: saved {} products from page {}", len(batch.valid_items), page_num)
+
+    async def _playwright_fetch(self, url: str) -> str:
+        from playwright.async_api import async_playwright
+
+        html = ""
+        try:
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(
+                    headless=False,  # visible browser — bypasses headless detection
+                    args=["--no-sandbox", "--start-maximized"]
+                )
+                context = await browser.new_context(
+                    viewport={"width": 1280, "height": 800},
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                    locale="en-US",
+                    timezone_id="America/New_York",
+                )
+                page = await context.new_page()
+
+                # Remove webdriver flag — key headless signal
+                await page.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+                )
+
+                log.info("AmazonSpider: navigating to {}", url)
+                await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+                # Wait for JS challenge to resolve and redirect
+                await asyncio.sleep(7)
+
+                # Wait for actual product cards
+                try:
+                    await page.wait_for_selector(
+                        "div[data-component-type='s-search-result']",
+                        timeout=20000
+                    )
+                    log.info("AmazonSpider: product cards visible")
+                except Exception:
+                    log.warning("AmazonSpider: cards not found after wait")
+
+                html = await page.content()
+                await browser.close()
+
+        except Exception as e:
+            log.error("AmazonSpider._playwright_fetch failed: {}", str(e))
+
+        return html
