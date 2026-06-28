@@ -353,3 +353,5 @@ PROXY_LIST=             # path to proxy list file
 GitHub: [Bartier5](https://github.com/Bartier5)  
 Specializations: Python web scraping, automation, bot development  
 Platforms: Upwork · Fiverr
+
+Thanks alot for checking out/ using my work. 
